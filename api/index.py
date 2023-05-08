@@ -72,7 +72,7 @@ def aesDecrypt():
         return jsonify({'error': 'No key provided.'}), 400
 
     # get file from request
-    file = request.files.get('file', None)
+    file = request.files.get('image', None)
     if file is None:
         return jsonify({'error': 'No file provided.'}), 400
     filename = secure_filename(file.filename)
