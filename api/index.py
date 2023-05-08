@@ -1,13 +1,10 @@
 from flask import Flask, request, send_file, jsonify
-
-from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
-from Crypto.Cipher import AES
 from io import BytesIO
-import base64
 import os
-import io
+
 
 app = Flask(__name__)
 
@@ -18,7 +15,51 @@ def derive_key(key, salt):
     h.update(salt)
     return h.digest()
 
+# For RSA
+def generate_keys(key_size):
+    # Generate RSA key pair of given key size
+    key = RSA.generate(key_size)
+    #! DEBUG: Print the private key to the terminal
+    # print(f"Private key: (n={hex(key.n)}, d={hex(key.d)})")
+    return key
 
+def encrypt_chunk(chunk, key):
+    # Encrypt the chunk with RSA
+    cipher_rsa = PKCS1_OAEP.new(key)
+    encrypted_chunk = cipher_rsa.encrypt(chunk)
+    return encrypted_chunk
+
+def decrypt_chunk(encrypted_chunk, key):
+    # Decrypt the chunk with RSA
+    cipher_rsa = PKCS1_OAEP.new(key)
+    chunk = cipher_rsa.decrypt(encrypted_chunk)
+    return chunk
+
+def encrypt_image(input_path, output_path, key):
+    # Encrypt the image file with RSA
+    with open(input_path, 'rb') as input_file:
+        with open(output_path, 'wb') as output_file:
+            while True:
+                chunk = input_file.read(key.size_in_bytes() - 42)
+                if not chunk:
+                    break
+                encrypted_chunk = encrypt_chunk(chunk, key.publickey())
+                output_file.write(encrypted_chunk)
+
+def decrypt_image(input_path, output_path, key):
+    # Decrypt the image file with RSA
+    with open(input_path, 'rb') as input_file:
+        with open(output_path, 'wb') as output_file:
+            while True:
+                encrypted_chunk = input_file.read(key.size_in_bytes())
+                if not encrypted_chunk:
+                    break
+                chunk = decrypt_chunk(encrypted_chunk, key)
+                output_file.write(chunk)
+
+
+
+#? Endpoints
 
 @app.route('/')
 def home():
@@ -126,65 +167,52 @@ def aesDecrypt():
 
 @app.route('/rsa-encrypt', methods=['POST'])
 def rsaEncrypt():
-    # Check if the 'image' and 'key' parameters exist in the form-data
-    if 'image' not in request.files or 'key' not in request.form:
-        return 'Missing parameters', 400
-    
-    # Read the image file and key from the form-data
-    image_file = request.files['image'].read()
-    key = request.form['key']
-    
-    # Generate a private key
-    private_key = RSA.generate(2048)
-    
-    # Initialize the cipher with the public key
-    public_key = private_key.publickey()
-    cipher = PKCS1_OAEP.new(public_key)
-    
-    # Encrypt the image file
-    chunk_size = 470
-    encrypted_chunks = []
-    for i in range(0, len(image_file), chunk_size):
-        chunk = image_file[i:i+chunk_size]
-        encrypted_chunk = cipher.encrypt(chunk)
-        encrypted_chunks.append(encrypted_chunk)
-    
-    # Base64 encode the encrypted image and private key
-    encrypted_image = base64.b64encode(b''.join(encrypted_chunks)).decode()
-    encrypted_key = base64.b64encode(private_key.export_key()).decode()
-    
-    # Return the encrypted image and private key
-    return jsonify({
-        'encryptedImage': encrypted_image,
-        'privateKey': encrypted_key
-    })
+    # Check if file was uploaded
+    if 'image' not in request.files:
+        return 'No file provided', 400
+
+    image = request.files['image']
+
+    # Check if file is an image
+    if not image.content_type.startswith('image/'):
+        return 'Only image files are allowed', 400
+
+    # Generate RSA key pair
+    key = generate_keys(2048)
+
+    # Encrypt the image file with RSA
+    input_filename = image.filename
+    input_extension = os.path.splitext(input_filename)[1]
+    output_filename = 'encrypted' + input_extension
+    encrypt_image(image, output_filename, key)
+
+    # Return the encrypted file and private key
+    return send_file(output_filename, as_attachment=False), key.export_key()
 
 @app.route('/rsa-decrypt', methods=['POST'])
 def rsaDecrypt():
-    # Check if the 'image', 'key', and 'privateKey' parameters exist in the form-data
-    if 'image' not in request.form or 'key' not in request.form or 'privateKey' not in request.form:
-        return 'Missing parameters', 400
-    
-    # Read the encrypted image and private key from the form-data
-    encrypted_image = request.form['image']
-    key = request.form['key']
-    private_key_str = request.form['privateKey']
-    
-    # Decode the private key and initialize the cipher
-    private_key = RSA.import_key(base64.b64decode(private_key_str))
-    cipher = PKCS1_OAEP.new(private_key)
-    
-    # Decode the encrypted image
-    encrypted_image = base64.b64decode(encrypted_image.encode())
-    
-    # Decrypt the encrypted image
-    chunk_size = 512
-    decrypted_chunks = []
-    for i in range(0, len(encrypted_image), chunk_size):
-        chunk = encrypted_image[i:i+chunk_size]
-        decrypted_chunk = cipher.decrypt(chunk)
-        decrypted_chunks.append(decrypted_chunk)
-    
-    # Combine the decrypted chunks and return the decrypted image
-    decrypted_image = b''.join(decrypted_chunks)
-    return send_file(io.BytesIO(decrypted_image), mimetype='image/jpeg')
+    # Check if file was uploaded
+    if 'image' not in request.files:
+        return 'No file provided', 400
+
+    image = request.files['image']
+
+    # Check if file is an image
+    if not image.content_type.startswith('image/'):
+        return 'Only image files are allowed', 400
+
+    # Check if private key was uploaded
+    if 'key' not in request.form:
+        return 'No private key provided', 400
+
+    private_key = request.form['key']
+    key = RSA.import_key(private_key)
+
+    # Decrypt the image file with RSA
+    input_filename = image.filename
+    input_extension = os.path.splitext(input_filename)[1]
+    output_filename = 'decrypted' + input_extension
+    decrypt_image(image, output_filename, key)
+
+    # Return the decrypted file
+    return send_file(output_filename, as_attachment=False)
