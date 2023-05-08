@@ -65,5 +65,4 @@ def aesEncrypt():
         'image': encrypted_image_bytes,
         'tag': tag.hex()
     }
-    response.headers.set('Content-Type', mimetype)
     return jsonify(response)
