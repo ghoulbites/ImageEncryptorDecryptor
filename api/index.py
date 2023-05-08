@@ -1,6 +1,8 @@
-from flask import Flask, request, send_file
-from Crypto.Cipher import AES
+from flask import Flask, request, send_file, jsonify
 from Crypto.Random import get_random_bytes
+from Crypto.Util.Padding import pad
+from Crypto.Hash import SHA256
+from Crypto.Cipher import AES
 from io import BytesIO
 from PIL import Image
 
@@ -16,33 +18,47 @@ def about():
 
 @app.route('/aes-encrypt', methods=['POST'])
 def aesEncrypt():
-    # get the image and key from the request
-    image = Image.open(request.files['image'])
+    # Get key and file from request
     key = request.form['key']
+    file = request.files['file'].read()
 
-    # encrypt the pixel data using AES-GCM
-    pixels = image.load()
-    width, height = image.size
+    # Hash key to get a 256-bit key
+    hashed_key = SHA256(key.encode()).digest()
+
+    # Encrypt the file using AES-GCM
     nonce = get_random_bytes(12)
-    cipher = AES.new(key.encode('utf-8'), AES.MODE_GCM, nonce=nonce)
-    for y in range(height):
-        for x in range(width):
-            r, g, b = pixels[x, y]
-            rgb = bytes([r, g, b])
-            cipherText, tag = cipher.encrypt_and_digest(rgb)
-            pixels[x, y] = tuple(cipherText)
+    cipher = AES.new(hashed_key, AES.MODE_GCM, nonce=nonce)
+    cipherText, tag = cipher.encrypt_and_digest(pad(file, AES.block_size))
 
-    # create an in-memory buffer for the encrypted image file
-    buffer = BytesIO()
-    image.save(buffer, format=image.format)
+    # Convert the encrypted file and tag to bytesIO objects
+    encrypted_file = BytesIO(cipherText)
+    encrypted_file.seek(0)
+    tag_file = BytesIO(tag)
+    tag_file.seek(0)
 
-    # set the buffer's file pointer to the beginning of the buffer
-    buffer.seek(0)
+    # Get the file extension from the original filename
+    filename = request.files['file'].filename
+    file_extension = filename.rsplit('.', 1)[1].lower()
 
-    # Return the buffer as a response with the appropriate MIME type
-    return send_file(
-        buffer,
-        mimetype='image/' + image.format.lower(),
-        as_attachment=True,
-        attachment_filename='encrypted_image.' + image.format.lower()
-    )
+    # Convert the bytesIO objects to an Image object
+    encrypted_image = Image.open(encrypted_file)
+    tag_image = Image.open(tag_file)
+
+    # Create a dictionary to hold the response data
+    response_data = {
+        'encrypted_file': encrypted_image,
+        'tag': tag_image
+    }
+
+    # Set the appropriate MIME type based on the file extension
+    if file_extension == 'png':
+        mimetype = 'image/png'
+    elif file_extension == 'jpg' or file_extension == 'jpeg':
+        mimetype = 'image/jpeg'
+    else:
+        mimetype = 'application/octet-stream'
+
+    # Return the response as JSON with the appropriate MIME type
+    response = jsonify(response_data)
+    response.headers.set('Content-Type', mimetype)
+    return response
