@@ -32,7 +32,7 @@ def aesEncrypt():
         return 'No key found', 400
 
     # Read the image and key parameters from the POST request
-    image = secure_filename(request.files['image'].read())
+    image = request.files['image'].read()
     key = request.form['key'].encode()
     _, fileExtension = os.path.splitext(secure_filename(request.files['image']))
     print(fileExtension)
@@ -77,7 +77,7 @@ def aesDecrypt():
 
 
     # Read the image and key parameters from the POST request
-    image = secure_filename(request.files['image'].read())
+    image = request.files['image'].read()
     key = request.form['key'].encode()
     _, fileExtension = os.path.splitext(secure_filename(request.files['image']))
     print(fileExtension)
