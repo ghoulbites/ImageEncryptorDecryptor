@@ -1,11 +1,11 @@
 from flask import Flask, request, send_file, jsonify
-from werkzeug.utils import secure_filename
+
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
 from Crypto.Cipher import AES
 from io import BytesIO
-from PIL import Image
+import base64
 import os
 import io
 
@@ -126,63 +126,65 @@ def aesDecrypt():
 
 @app.route('/rsa-encrypt', methods=['POST'])
 def rsaEncrypt():
-    # Get the image file and key from the request
+    # Check if the 'image' and 'key' parameters exist in the form-data
+    if 'image' not in request.files or 'key' not in request.form:
+        return 'Missing parameters', 400
+    
+    # Read the image file and key from the form-data
     image_file = request.files['image'].read()
     key = request.form['key']
-
-    # Generate RSA key pair
-    rsa_key = RSA.generate(2048)
-
-    # Encrypt the image file with RSA
-    cipher = PKCS1_OAEP.new(rsa_key.publickey(), hashAlgo=SHA256)
-    encrypted_image = cipher.encrypt(image_file)
-
-    # Encrypt the RSA private key with AES
-    encrypted_key = key.encode('utf-8')
-    rsa_private_key = rsa_key.export_key('PEM')
-    cipher = AES.new(encrypted_key, AES.MODE_EAX)
-    nonce = cipher.nonce
-    encrypted_rsa_private_key, tag = cipher.encrypt_and_digest(rsa_private_key)
-
-    # Return the encrypted image file and private key
-    file_extension = os.path.splitext(request.files['image'].filename)[1]
-    return {
-        'privateKey': {
-            'encryptedKey': encrypted_key.hex(),
-            'nonce': nonce.hex(),
-            'encryptedRSAKey': encrypted_rsa_private_key.hex(),
-            'tag': tag.hex()
-        },
-        'encryptedImage': encrypted_image.hex(),
-        'fileExtension': file_extension
-    }
-
+    
+    # Generate a private key
+    private_key = RSA.generate(2048)
+    
+    # Initialize the cipher with the public key
+    public_key = private_key.publickey()
+    cipher = PKCS1_OAEP.new(public_key)
+    
+    # Encrypt the image file
+    chunk_size = 470
+    encrypted_chunks = []
+    for i in range(0, len(image_file), chunk_size):
+        chunk = image_file[i:i+chunk_size]
+        encrypted_chunk = cipher.encrypt(chunk)
+        encrypted_chunks.append(encrypted_chunk)
+    
+    # Base64 encode the encrypted image and private key
+    encrypted_image = base64.b64encode(b''.join(encrypted_chunks)).decode()
+    encrypted_key = base64.b64encode(private_key.export_key()).decode()
+    
+    # Return the encrypted image and private key
+    return jsonify({
+        'encryptedImage': encrypted_image,
+        'privateKey': encrypted_key
+    })
 
 @app.route('/rsa-decrypt', methods=['POST'])
 def rsaDecrypt():
-    # Get the encrypted image file, key, and private key from the request
-    encrypted_image = bytes.fromhex(request.files['image'].read().decode('utf-8'))
+    # Check if the 'image', 'key', and 'privateKey' parameters exist in the form-data
+    if 'image' not in request.form or 'key' not in request.form or 'privateKey' not in request.form:
+        return 'Missing parameters', 400
+    
+    # Read the encrypted image and private key from the form-data
+    encrypted_image = request.form['image']
     key = request.form['key']
-    encrypted_key = bytes.fromhex(request.form['privateKey']['encryptedKey'])
-    nonce = bytes.fromhex(request.form['privateKey']['nonce'])
-    encrypted_rsa_private_key = bytes.fromhex(request.form['privateKey']['encryptedRSAKey'])
-    tag = bytes.fromhex(request.form['privateKey']['tag'])
-
-    # Decrypt the RSA private key with AES
-    cipher = AES.new(key.encode('utf-8'), AES.MODE_EAX, nonce=nonce)
-    rsa_private_key = cipher.decrypt_and_verify(encrypted_rsa_private_key, tag)
-    rsa_key = RSA.import_key(rsa_private_key)
-
-    # Decrypt the image file with RSA
-    cipher = PKCS1_OAEP.new(rsa_key, hashAlgo=SHA256)
-    decrypted_image = cipher.decrypt(encrypted_image)
-
-    # Save the decrypted image file to memory
-    file_extension = request.form['fileExtension']
-    image = Image.open(io.BytesIO(decrypted_image))
-    output = io.BytesIO()
-    image.save(output, format=file_extension)
-
-    # Return the decrypted image file
-    output.seek(0)
-    return send_file(output, mimetype='image/' + file_extension[1:])
+    private_key_str = request.form['privateKey']
+    
+    # Decode the private key and initialize the cipher
+    private_key = RSA.import_key(base64.b64decode(private_key_str))
+    cipher = PKCS1_OAEP.new(private_key)
+    
+    # Decode the encrypted image
+    encrypted_image = base64.b64decode(encrypted_image.encode())
+    
+    # Decrypt the encrypted image
+    chunk_size = 512
+    decrypted_chunks = []
+    for i in range(0, len(encrypted_image), chunk_size):
+        chunk = encrypted_image[i:i+chunk_size]
+        decrypted_chunk = cipher.decrypt(chunk)
+        decrypted_chunks.append(decrypted_chunk)
+    
+    # Combine the decrypted chunks and return the decrypted image
+    decrypted_image = b''.join(decrypted_chunks)
+    return send_file(io.BytesIO(decrypted_image), mimetype='image/jpeg')
