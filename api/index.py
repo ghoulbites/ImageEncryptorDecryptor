@@ -126,74 +126,63 @@ def aesDecrypt():
 
 @app.route('/rsa-encrypt', methods=['POST'])
 def rsaEncrypt():
-    # Check if the request contains an image file
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image file in request'}), 400
-
-    # Check if the request contains a key parameter
-    if 'key' not in request.form:
-        return jsonify({'error': 'No key parameter in request'}), 400
-
-    # Read the image file from the request
+    # Get the image file and key from the request
     image_file = request.files['image'].read()
+    key = request.form['key']
 
-    # Check if the image file is a JPEG/JPG or a PNG
-    if not Image.open(io.BytesIO(image_file)).format.lower() in ('jpeg', 'jpg', 'png'):
-        return jsonify({'error': 'Unsupported image format'}), 400
+    # Generate RSA key pair
+    rsa_key = RSA.generate(2048)
 
-    # Generate an RSA key pair
-    key = RSA.generate(2048)
-    private_key = key.export_key(passphrase=request.form['key'])
-
-    # Encrypt the image file with the public key
-    cipher = PKCS1_OAEP.new(key.publickey())
+    # Encrypt the image file with RSA
+    cipher = PKCS1_OAEP.new(rsa_key.publickey(), hashAlgo=SHA256)
     encrypted_image = cipher.encrypt(image_file)
 
-    # Create a response containing the encrypted image and the private key
-    response = jsonify({
-        'encrypted_image': encrypted_image,
-        'private_key': private_key
-    })
+    # Encrypt the RSA private key with AES
+    encrypted_key = key.encode('utf-8')
+    rsa_private_key = rsa_key.export_key('PEM')
+    cipher = AES.new(encrypted_key, AES.MODE_EAX)
+    nonce = cipher.nonce
+    encrypted_rsa_private_key, tag = cipher.encrypt_and_digest(rsa_private_key)
 
-    # Set the content type to binary data
-    response.headers.set('Content-Type', 'application/octet-stream')
-
-    return response, 200
+    # Return the encrypted image file and private key
+    file_extension = os.path.splitext(request.files['image'].filename)[1]
+    return {
+        'privateKey': {
+            'encryptedKey': encrypted_key.hex(),
+            'nonce': nonce.hex(),
+            'encryptedRSAKey': encrypted_rsa_private_key.hex(),
+            'tag': tag.hex()
+        },
+        'encryptedImage': encrypted_image.hex(),
+        'fileExtension': file_extension
+    }
 
 
 @app.route('/rsa-decrypt', methods=['POST'])
 def rsaDecrypt():
-    # Check if the request contains an image file
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image file in request'}), 400
+    # Get the encrypted image file, key, and private key from the request
+    encrypted_image = bytes.fromhex(request.files['image'].read().decode('utf-8'))
+    key = request.form['key']
+    encrypted_key = bytes.fromhex(request.form['privateKey']['encryptedKey'])
+    nonce = bytes.fromhex(request.form['privateKey']['nonce'])
+    encrypted_rsa_private_key = bytes.fromhex(request.form['privateKey']['encryptedRSAKey'])
+    tag = bytes.fromhex(request.form['privateKey']['tag'])
 
-    # Check if the request contains a key parameter
-    if 'key' not in request.form:
-        return jsonify({'error': 'No key parameter in request'}), 400
+    # Decrypt the RSA private key with AES
+    cipher = AES.new(key.encode('utf-8'), AES.MODE_EAX, nonce=nonce)
+    rsa_private_key = cipher.decrypt_and_verify(encrypted_rsa_private_key, tag)
+    rsa_key = RSA.import_key(rsa_private_key)
 
-    # Check if the request contains a privateKey parameter
-    if 'privateKey' not in request.form:
-        return jsonify({'error': 'No privateKey parameter in request'}), 400
+    # Decrypt the image file with RSA
+    cipher = PKCS1_OAEP.new(rsa_key, hashAlgo=SHA256)
+    decrypted_image = cipher.decrypt(encrypted_image)
 
-    # Read the encrypted image file and the private key from the request
-    encrypted_image = request.files['image'].read()
-    encrypted_private_key = request.form['privateKey'].encode('utf-8')
+    # Save the decrypted image file to memory
+    file_extension = request.form['fileExtension']
+    image = Image.open(io.BytesIO(decrypted_image))
+    output = io.BytesIO()
+    image.save(output, format=file_extension)
 
-    # Decrypt the private key with the provided passphrase
-    key = RSA.import_key(encrypted_private_key, passphrase=request.form['key'])
-
-    # Decrypt the image file with the private key
-    cipher = PKCS1_OAEP.new(key)
-    image_file = cipher.decrypt(encrypted_image)
-
-    # Check if the image file is a JPEG/JPG or a PNG
-    if not Image.open(io.BytesIO(image_file)).format.lower() in ('jpeg', 'jpg', 'png'):
-        return jsonify({'error': 'Unsupported image format'}), 400
-
-    # Create a response containing the decrypted image file
-    response = jsonify({'decrypted_image': image_file})
-
-    # Set the content type to the same format as the input image
-    response.headers.set('Content-Type', 'image/' + Image.open(io.BytesIO(image_file)).format.lower())
-
-    return response, 200
+    # Return the decrypted image file
+    output.seek(0)
+    return send_file(output, mimetype='image/' + file_extension[1:])
