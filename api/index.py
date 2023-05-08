@@ -97,4 +97,4 @@ def aesDecrypt():
         temp_filename = f.name
 
     # return decrypted file
-    return send_file(temp_filename, as_attachment=True, attachment_filename=filename)
+    return send_file(temp_filename, as_attachment=True)
