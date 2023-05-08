@@ -58,8 +58,11 @@ def aesEncrypt():
     #     return output_file.getvalue(), {'Content-Type': 'image/jpeg'}
     # elif file_extension == 'png':
     #     return output_file.getvalue(), {'Content-Type': 'image/png'}
+
+    returnFile = BytesIO()
+    returnFile.write(file.read())
     
     if file_extension == 'jpg' or file_extension == 'jpeg':
-        return file.read(), {'Content-Type': 'image/jpeg'}
+        return returnFile, {'Content-Type': 'image/jpeg'}
     elif file_extension == 'png':
-        return file.read(), {'Content-Type': 'image/png'}
+        return returnFile, {'Content-Type': 'image/png'}
