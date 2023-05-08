@@ -174,51 +174,44 @@ def aesDecrypt():
 @app.route('/rsa-encrypt', methods=['POST'])
 def rsaEncrypt():
     # Check if file was uploaded
-    if 'image' not in request.files:
+    if 'file' not in request.files:
         return 'No file provided', 400
 
-    image = request.files['image']
+    file = request.files['file']
 
     # Check if file is an image
-    if not image.content_type.startswith('image/'):
+    if not file.content_type.startswith('image/'):
         return 'Only image files are allowed', 400
 
     # Generate RSA key pair
     key = generate_keys(2048)
 
     # Encrypt the image file with RSA
-    input_filename = image.filename
-    input_extension = os.path.splitext(input_filename)[1]
-    output_filename = 'encrypted' + input_extension
-    encrypt_image(image, output_filename, key)
+    encrypted_data = encrypt_image(file, key)
 
     # Return the encrypted file and private key
-    return send_file(output_filename, as_attachment=False), key.export_key()
+    return send_file(BytesIO(encrypted_data), attachment_filename='encrypted' + os.path.splitext(file.filename)[1], as_attachment=False), key.export_key()
 
 @app.route('/rsa-decrypt', methods=['POST'])
 def rsaDecrypt():
     # Check if file was uploaded
-    if 'image' not in request.files:
+    if 'file' not in request.files:
         return 'No file provided', 400
 
-    image = request.files['image']
+    file = request.files['file']
 
     # Check if file is an image
-    if not image.content_type.startswith('image/'):
+    if not file.content_type.startswith('image/'):
         return 'Only image files are allowed', 400
 
     # Check if private key was uploaded
     if 'key' not in request.form:
         return 'No private key provided', 400
 
-    private_key = request.form['key']
-    key = RSA.import_key(private_key)
+    private_key = RSA.import_key(request.form['key'])
 
     # Decrypt the image file with RSA
-    input_filename = image.filename
-    input_extension = os.path.splitext(input_filename)[1]
-    output_filename = 'decrypted' + input_extension
-    decrypt_image(image, output_filename, key)
+    decrypted_data = decrypt_image(file, private_key)
 
     # Return the decrypted file
-    return send_file(output_filename, as_attachment=False)
+    return send_file(BytesIO(decrypted_data), attachment_filename='decrypted' + os.path.splitext(file.filename)[1], as_attachment=False)
