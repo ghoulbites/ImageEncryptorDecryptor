@@ -42,10 +42,8 @@ def aesEncrypt():
     file_contents = file.read()
 
     # Generate a 256-bit key from the input key
-    key_bytes = key.encode('utf-8')
-    key_256 = get_random_bytes(32)
-    for i in range(len(key_bytes)):
-        key_256[i] = key_bytes[i]
+    key_bytes = secure_filename(request.form['key']).encode('utf-8')
+    key_256 = key_bytes[:32] + b'\0' * (32 - len(key_bytes))
 
     # Encrypt the file
     cipher = AES.new(key_256, AES.MODE_CBC)
