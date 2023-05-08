@@ -52,17 +52,9 @@ def aesEncrypt():
         encrypted_image.save(output_buffer, format=output_format)
         encrypted_image_bytes = output_buffer.getvalue()
 
-        # Set the appropriate MIME type based on the file extension
-        if file_ext == 'png':
-            mimetype = 'image/png'
-        elif file_ext == 'jpg' or file_ext == 'jpeg':
-            mimetype = 'image/jpeg'
-        else:
-            mimetype = 'application/octet-stream'
-
     # Return the encrypted image and tag as a JSON response
     response = {
         'image': encrypted_image_bytes,
         'tag': tag.hex()
     }
-    return jsonify(response)
+    return jsonify(response.decode())
