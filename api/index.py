@@ -189,8 +189,13 @@ def rsaEncrypt():
     # Encrypt the image file with RSA
     encrypted_data = encrypt_image(image, key)
 
+    if image.mimetype == 'image/jpeg':
+        output_format = 'image/jpeg'
+    elif image.mimetype == 'image/png':
+        output_format = 'image/png'
+
     # Return the encrypted file and private key
-    return send_file(BytesIO(encrypted_data), attachment_filename='encrypted' + os.path.splitext(image.filename)[1], as_attachment=False), key.export_key()
+    return send_file(BytesIO(encrypted_data), mimetype=output_format, as_attachment=False), key.export_key()
 
 @app.route('/rsa-decrypt', methods=['POST'])
 def rsaDecrypt():
@@ -213,5 +218,10 @@ def rsaDecrypt():
     # Decrypt the image file with RSA
     decrypted_data = decrypt_image(image, private_key)
 
+    if image.mimetype == 'image/jpeg':
+        output_format = 'image/jpeg'
+    elif image.mimetype == 'image/png':
+        output_format = 'image/png'
+
     # Return the decrypted file
-    return send_file(BytesIO(decrypted_data), attachment_filename='decrypted' + os.path.splitext(image.filename)[1], as_attachment=False)
+    return send_file(BytesIO(decrypted_data), mimetype=output_format, as_attachment=False)
