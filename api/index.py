@@ -197,7 +197,7 @@ def rsaEncrypt():
     # Return the encrypted file and private key
     return (
         send_file(BytesIO(encrypted_data), mimetype=output_format, as_attachment=False),
-        key.export_key().encode('utf-8')
+        key.export_key()
     )
 
 @app.route('/rsa-decrypt', methods=['POST'])
