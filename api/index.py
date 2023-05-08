@@ -32,6 +32,7 @@ def aesEncrypt():
         return 'No key found', 400
 
     # Read the image and key parameters from the POST request
+    imageObject = request.files['image']
     image = request.files['image'].read()
     key = request.form['key'].encode()
 
@@ -59,8 +60,14 @@ def aesEncrypt():
     output_file.write(encrypted_data)
     output_file.seek(0)
 
+    # Set the output file format to match the input file format
+    if imageObject.mimetype == 'image/jpeg':
+        output_format = 'image/jpeg'
+    elif imageObject.mimetype == 'image/png':
+        output_format = 'image/png'
+
     # Return the encrypted data as a response
-    return send_file(output_file, mimetype='application/octet-stream')
+    return send_file(output_file, mimetype=output_format)
 
 
 @app.route('/aes-decrypt', methods=['POST'])
@@ -75,6 +82,7 @@ def aesDecrypt():
 
 
     # Read the image and key parameters from the POST request
+    imageObject = request.files['image']
     image = request.files['image'].read()
     key = request.form['key'].encode()
 
@@ -97,10 +105,16 @@ def aesDecrypt():
     # Remove the padding from the decrypted data
     unpadded_data = decrypted_data.rstrip(b"\0")
 
+    # Set the output file format to match the input file format
+    if imageObject.mimetype == 'image/jpeg':
+        output_format = 'image/jpeg'
+    elif imageObject.mimetype == 'image/png':
+        output_format = 'image/png'
+
     # Write the decrypted data to a BytesIO object
     output_file = BytesIO()
     output_file.write(unpadded_data)
     output_file.seek(0)
 
     # Return the decrypted data as a response
-    return send_file(output_file, mimetype='image/jpeg')
+    return send_file(output_file, mimetype=output_format)
