@@ -1,10 +1,10 @@
 from flask import Flask, request, send_file, jsonify
 from Crypto.Random import get_random_bytes
+from werkzeug.utils import secure_filename
 from Crypto.Util.Padding import pad
-import hashlib
 from Crypto.Cipher import AES
 from io import BytesIO
-from PIL import Image
+
 
 app = Flask(__name__)
 
@@ -18,43 +18,45 @@ def about():
 
 @app.route('/aes-encrypt', methods=['POST'])
 def aesEncrypt():
-    # Get the image file and key from the request
-    image_file = request.files['image']
+    # Check if file is in the request
+    if 'image' not in request.files:
+        return 'No file found', 400
+
+    # Check if key is in the request
+    if 'key' not in request.form:
+        return 'No key found', 400
+
+    # Get the file and key from the request
+    file = request.files['image']
     key = request.form['key']
-    
-    # Hash the key using SHA-256 and get the first 32 bytes as the AES key
-    hashed_key = hashlib.sha256(key.encode()).digest()[:32]
-    
-    # Read the image file and convert it to bytes
-    image_bytes = BytesIO(image_file.read())
 
-    # Open the image using Pillow and encrypt it with AES-GCM
-    with Image.open(image_bytes) as im:
-        # Get the file extension and determine the output format
-        file_ext = im.format.lower()
-        if file_ext == 'jpeg':
-            output_format = 'JPEG'
-        elif file_ext == 'png':
-            output_format = 'PNG'
-        else:
-            output_format = 'BMP'
-        
-        # Encrypt the image with AES-GCM
-        nonce = get_random_bytes(12)
-        cipher = AES.new(hashed_key, AES.MODE_GCM, nonce=nonce)
-        cipherText, tag = cipher.encrypt_and_digest(pad(im.tobytes(), AES.block_size))
+    # Determine the file format from the filename
+    filename = secure_filename(file.filename)
+    file_extension = filename.rsplit('.', 1)[1].lower()
 
-        # Create a new image from the encrypted data
-        encrypted_image = Image.frombytes(im.mode, im.size, cipherText)
+    # Check if file format is supported
+    if file_extension not in ['jpg', 'jpeg', 'png']:
+        return 'Unsupported file format', 400
 
-        # Create an in-memory file object for the encrypted image
-        output_buffer = BytesIO()
-        encrypted_image.save(output_buffer, format=output_format)
-        encrypted_image_bytes = output_buffer.getvalue()
+    # Read the file contents
+    file_contents = file.read()
 
-    # Return the encrypted image and tag as a JSON response
-    response = {
-        'image': encrypted_image_bytes,
-        'tag': tag.hex()
-    }
-    return jsonify(response.decode())
+    # Generate a 256-bit key from the input key
+    key_bytes = key.encode('utf-8')
+    key_256 = get_random_bytes(32)
+    for i in range(len(key_bytes)):
+        key_256[i] = key_bytes[i]
+
+    # Encrypt the file
+    cipher = AES.new(key_256, AES.MODE_CBC)
+    ct_bytes = cipher.encrypt(pad(file_contents, AES.block_size))
+
+    # Return the encrypted file in the same format as the input file
+    output_file = BytesIO()
+    output_file.write(cipher.iv)
+    output_file.write(ct_bytes)
+
+    if file_extension == 'jpg' or file_extension == 'jpeg':
+        return output_file.getvalue(), {'Content-Type': 'image/jpeg'}
+    elif file_extension == 'png':
+        return output_file.getvalue(), {'Content-Type': 'image/png'}
