@@ -15,7 +15,7 @@ def about():
     return 'About'
 
 @app.route('/aes-encrypt', methods=['POST'])
-def encrypt():
+def aesEncrypt():
     # get the image and key from the request
     image = Image.open(request.files['image'])
     key = request.form['key']
