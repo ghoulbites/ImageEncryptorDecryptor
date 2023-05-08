@@ -7,6 +7,7 @@ from Crypto.Cipher import AES
 from io import BytesIO
 from PIL import Image
 import os
+import io
 
 app = Flask(__name__)
 
