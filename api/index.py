@@ -4,6 +4,8 @@ from werkzeug.utils import secure_filename
 from Crypto.Util.Padding import pad
 from Crypto.Cipher import AES
 from io import BytesIO
+import os
+import tempfile
 
 
 app = Flask(__name__)
@@ -12,9 +14,11 @@ app = Flask(__name__)
 def home():
     return 'Hello, World! This is some random change'
 
+
 @app.route('/about')
 def about():
     return 'About'
+
 
 @app.route('/aes-encrypt', methods=['POST'])
 def aesEncrypt():
@@ -54,15 +58,43 @@ def aesEncrypt():
     output_file.write(cipher.iv)
     output_file.write(ct_bytes)
 
-    # if file_extension == 'jpg' or file_extension == 'jpeg':
-    #     return output_file.getvalue(), {'Content-Type': 'image/jpeg'}
-    # elif file_extension == 'png':
-    #     return output_file.getvalue(), {'Content-Type': 'image/png'}
-
-    returnFile = BytesIO()
-    returnFile.write(file.read())
-    
     if file_extension == 'jpg' or file_extension == 'jpeg':
-        return returnFile, {'Content-Type': 'image/jpeg'}
+        return output_file.getvalue(), {'Content-Type': 'image/jpeg'}
     elif file_extension == 'png':
-        return returnFile, {'Content-Type': 'image/png'}
+        return output_file.getvalue(), {'Content-Type': 'image/png'}
+
+
+@app.route('/aes-decrypt', methods=['POST'])
+def aesDecrypt():
+    # get key from request
+    key = request.form.get('key', None)
+    if key is None:
+        return jsonify({'error': 'No key provided.'}), 400
+
+    # get file from request
+    file = request.files.get('file', None)
+    if file is None:
+        return jsonify({'error': 'No file provided.'}), 400
+    filename = secure_filename(file.filename)
+
+    # determine file extension
+    _, extension = os.path.splitext(filename)
+
+    # read file into memory
+    file_bytes = file.read()
+
+    # decrypt file
+    key_bytes = key.encode()
+    key_256 = bytearray(32)
+    for i in range(len(key_bytes)):
+        key_256[i] = key_bytes[i]
+    cipher = AES.new(key_256, AES.MODE_ECB)
+    decrypted_bytes = cipher.decrypt(file_bytes)
+
+    # write decrypted file to disk
+    with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as f:
+        f.write(decrypted_bytes)
+        temp_filename = f.name
+
+    # return decrypted file
+    return send_file(temp_filename, as_attachment=True, attachment_filename=filename)
