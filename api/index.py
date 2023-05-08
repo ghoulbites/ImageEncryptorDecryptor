@@ -42,7 +42,7 @@ def aesEncrypt():
     file_contents = file.read()
 
     # Generate a 256-bit key from the input key
-    key_bytes = secure_filename(request.form['key']).encode('utf-8')
+    key_bytes = key.encode('utf-8')
     key_256 = key_bytes[:32] + b'\0' * (32 - len(key_bytes))
 
     # Encrypt the file
@@ -54,7 +54,12 @@ def aesEncrypt():
     output_file.write(cipher.iv)
     output_file.write(ct_bytes)
 
+    # if file_extension == 'jpg' or file_extension == 'jpeg':
+    #     return output_file.getvalue(), {'Content-Type': 'image/jpeg'}
+    # elif file_extension == 'png':
+    #     return output_file.getvalue(), {'Content-Type': 'image/png'}
+    
     if file_extension == 'jpg' or file_extension == 'jpeg':
-        return output_file.getvalue(), {'Content-Type': 'image/jpeg'}
+        return file, {'Content-Type': 'image/jpeg'}
     elif file_extension == 'png':
-        return output_file.getvalue(), {'Content-Type': 'image/png'}
+        return file, {'Content-Type': 'image/png'}
