@@ -35,27 +35,33 @@ def decrypt_chunk(encrypted_chunk, key):
     chunk = cipher_rsa.decrypt(encrypted_chunk)
     return chunk
 
-def encrypt_image(input_path, output_path, key):
+def encrypt_image(file, key):
     # Encrypt the image file with RSA
-    with open(input_path, 'rb') as input_file:
-        with open(output_path, 'wb') as output_file:
-            while True:
-                chunk = input_file.read(key.size_in_bytes() - 42)
-                if not chunk:
-                    break
-                encrypted_chunk = encrypt_chunk(chunk, key.publickey())
-                output_file.write(encrypted_chunk)
+    encrypted_bytes = BytesIO()
 
-def decrypt_image(input_path, output_path, key):
+    while True:
+        chunk = file.read(key.size_in_bytes() - 42)
+        if not chunk:
+            break
+        encrypted_chunk = encrypt_chunk(chunk, key.publickey())
+        encrypted_bytes.write(encrypted_chunk)
+
+    encrypted_bytes.seek(0)
+    return encrypted_bytes.getvalue()
+
+def decrypt_image(file, private_key):
     # Decrypt the image file with RSA
-    with open(input_path, 'rb') as input_file:
-        with open(output_path, 'wb') as output_file:
-            while True:
-                encrypted_chunk = input_file.read(key.size_in_bytes())
-                if not encrypted_chunk:
-                    break
-                chunk = decrypt_chunk(encrypted_chunk, key)
-                output_file.write(chunk)
+    decrypted_bytes = BytesIO()
+
+    while True:
+        encrypted_chunk = file.read(private_key.size_in_bytes())
+        if not encrypted_chunk:
+            break
+        chunk = decrypt_chunk(encrypted_chunk, private_key)
+        decrypted_bytes.write(chunk)
+
+    decrypted_bytes.seek(0)
+    return decrypted_bytes.getvalue()
 
 
 
